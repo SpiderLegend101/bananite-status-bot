@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import re
 import os
 from flask import Flask
@@ -8,7 +8,7 @@ from threading import Thread
 # ====== INTENTS ======
 intents = discord.Intents.default()
 intents.members = True
-intents.presences = True  # Needed to read custom statuses
+intents.presences = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -18,36 +18,43 @@ ROLE_ID = 1454677608733216880
 TEXT_CHANNEL_ID = 1462339053193138260
 VANITY_LINK_PATTERN = r"(\/bananite|discord\.gg\/bananite)"
 
-# ====== EVENTS ======
+# ====== HELPER FUNCTION ======
+def has_bananite_custom_status(member):
+    for activity in member.activities:
+        if isinstance(activity, discord.CustomActivity) and activity.type == discord.ActivityType.custom:
+            if activity.name and re.search(VANITY_LINK_PATTERN, activity.name, re.IGNORECASE):
+                return True
+    return False
+
+# ====== SCAN MEMBERS ON STARTUP ======
 @bot.event
 async def on_ready():
     print(f"{bot.user} is online!")
+    guild = bot.get_guild(GUILD_ID)
+    role = guild.get_role(ROLE_ID)
+    text_channel = guild.get_channel(TEXT_CHANNEL_ID)
 
+    for member in guild.members:
+        if has_bananite_custom_status(member):
+            if role not in member.roles:
+                await member.add_roles(role)
+                await text_channel.send(
+                    f"🍌 {member.mention} has received the role {role.name} "
+                    f"for showing `/bananite` in their custom status!"
+                )
+
+# ====== ON MEMBER UPDATE ======
 @bot.event
 async def on_member_update(before, after):
     guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        return
-
     role = guild.get_role(ROLE_ID)
     member = guild.get_member(after.id)
     text_channel = guild.get_channel(TEXT_CHANNEL_ID)
 
-    if not role or not member or not text_channel:
-        return
+    had_status = has_bananite_custom_status(before)
+    has_status = has_bananite_custom_status(after)
 
-    # Check if the member has the vanity link in their CUSTOM STATUS
-    def has_bananite_custom_status(activities):
-        for activity in activities:
-            if isinstance(activity, discord.CustomActivity) and activity.type == discord.ActivityType.custom:
-                if activity.name and re.search(VANITY_LINK_PATTERN, activity.name, re.IGNORECASE):
-                    return True
-        return False
-
-    had_status = has_bananite_custom_status(before.activities)
-    has_status = has_bananite_custom_status(after.activities)
-
-    # Assign role if user added /bananite to custom status
+    # Assign role
     if has_status and not had_status:
         if role not in member.roles:
             await member.add_roles(role)
@@ -56,7 +63,7 @@ async def on_member_update(before, after):
                 f"for showing `/bananite` in their custom status!"
             )
 
-    # Remove role if user removed /bananite from custom status
+    # Remove role
     elif had_status and not has_status:
         if role in member.roles:
             await member.remove_roles(role)

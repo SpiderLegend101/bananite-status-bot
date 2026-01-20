@@ -8,7 +8,7 @@ from threading import Thread
 # ====== INTENTS ======
 intents = discord.Intents.default()
 intents.members = True
-intents.presences = True
+intents.presences = True  # Needed to read custom statuses
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -36,32 +36,33 @@ async def on_member_update(before, after):
     if not role or not member or not text_channel:
         return
 
-    def has_bananite_status(activities):
+    # Check if the member has the vanity link in their CUSTOM STATUS
+    def has_bananite_custom_status(activities):
         for activity in activities:
-            # Check name of any activity
-            if activity.name and re.search(VANITY_LINK_PATTERN, activity.name, re.IGNORECASE):
-                return True
+            if isinstance(activity, discord.CustomActivity) and activity.type == discord.ActivityType.custom:
+                if activity.name and re.search(VANITY_LINK_PATTERN, activity.name, re.IGNORECASE):
+                    return True
         return False
 
-    had_status = has_bananite_status(before.activities)
-    has_status = has_bananite_status(after.activities)
+    had_status = has_bananite_custom_status(before.activities)
+    has_status = has_bananite_custom_status(after.activities)
 
-    # Assign role
+    # Assign role if user added /bananite to custom status
     if has_status and not had_status:
         if role not in member.roles:
             await member.add_roles(role)
             await text_channel.send(
                 f"🍌 {member.mention} has received the role {role.name} "
-                f"for showing `/bananite` in their status!"
+                f"for showing `/bananite` in their custom status!"
             )
 
-    # Remove role
+    # Remove role if user removed /bananite from custom status
     elif had_status and not has_status:
         if role in member.roles:
             await member.remove_roles(role)
             await text_channel.send(
                 f"⚠️ {member.mention} has lost the role {role.name} "
-                f"because `/bananite` was removed from their status."
+                f"because `/bananite` was removed from their custom status."
             )
 
 # ====== KEEP BOT ONLINE ======
@@ -69,7 +70,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bananite bot is alive!"
+    return "Bananite Vanity is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
